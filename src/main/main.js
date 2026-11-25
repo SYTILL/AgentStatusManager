@@ -226,6 +226,7 @@ function registerIpc() {
     if (nh !== contentH) { contentH = nh; layout(); }
   });
   ipcMain.on('toggle-notify', (_, id) => store.toggleNotify(id));
+  ipcMain.on('open-vscode', (_, id) => { const s = store.get(id); if (s) openInVSCode(s.cwd); });
   ipcMain.on('set-pinned', (_, v) => { settings.pinned = !!v; saveSettings(); });
   ipcMain.on('drag-start', dragStart);
   ipcMain.on('drag-end', dragEnd);

@@ -19,6 +19,9 @@ const ICON_MINI = `<svg width="10" height="10" viewBox="0 0 24 24" fill="current
 const ICON_ON = `<svg class="on-ic" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22Zm7-6V11a7 7 0 0 0-5.5-6.84V3.5a1.5 1.5 0 0 0-3 0v.66A7 7 0 0 0 5 11v5l-2 2v1h18v-1Z"/></svg>`;
 const ICON_OFF = `<svg class="off-ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 16v-5a6 6 0 0 0-9.5-4.9M6.3 8.6A6 6 0 0 0 6 11v5l-2 2h13"/><path d="M10 20a2 2 0 0 0 4 0"/><path d="M3 3l18 18"/></svg>`;
 
+// "Open in editor" icon: a window with an arrow pointing out
+const ICON_OPEN = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></svg>`;
+
 function lineText(s) {
   if (s.status === 'attention') return s.detail || s.summary || 'Needs your attention';
   if (s.status === 'working') return [s.summary, s.detail].filter(Boolean).join(' · ') || 'Working';
@@ -47,6 +50,7 @@ function render() {
         <div class="sum" title="${esc(txt)}">${esc(txt)}</div>
         <div class="meta"><span>Session <b data-s></b></span><span title="${esc(tip)}">Tokens <b>${fmtTok(tokTotal(t))}</b></span></div>
       </div>
+      <button class="vsc" title="Open in VS Code" ${s.cwd ? '' : 'disabled'}>${ICON_OPEN}</button>
       <button class="bell" title="Toggle notifications">${ICON_ON}${ICON_OFF}</button>
     </div>`;
   }).join('');
@@ -103,6 +107,8 @@ api.onMenuClosed(() => {
 });
 
 list.addEventListener('click', (e) => {
+  const v = e.target.closest('.vsc');
+  if (v) { api.openInVSCode(v.closest('.item').dataset.id); return; }
   const b = e.target.closest('.bell');
   if (b) api.toggleNotify(b.closest('.item').dataset.id);
 });
