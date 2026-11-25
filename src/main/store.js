@@ -9,6 +9,9 @@ const READY_TO_IDLE = 60 * MIN;   // ready for this long → idle
 const STALE_WORKING = 20 * MIN;   // working with no events/transcript writes this long → idle
 const DROP_IDLE = 24 * 60 * MIN;  // idle for this long → removed from the list
 const SWEEP_MS = 3000;
+const SLOT_KEEP = 30 * MIN;       // a new session in the same folder within this long after the last one ended keeps its slot
+
+const slotKey = (cwd) => (cwd ? path.resolve(cwd).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase() : '');
 
 const oneLine = (s) => String(s || '').replace(/\s+/g, ' ').trim();
 const trunc = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
@@ -53,7 +56,11 @@ class Store extends EventEmitter {
   constructor(file) {
     super();
     this.file = file;
+    this.orderFile = path.join(path.dirname(file), 'order.json');
     this.sessions = new Map();
+    // Row order is fixed per project folder (= VS Code open order).
+    // A new session in the same folder (/clear, new chat) inherits the slot; reopening after 30+ minutes goes to the bottom.
+    this.slots = new Map(); // folder key -> { order, endedAt }
     this._load();
     this._timer = setInterval(() => this._sweep(), SWEEP_MS);
   }
@@ -73,25 +80,77 @@ class Store extends EventEmitter {
         this.sessions.set(s.id, s);
       }
     } catch { /* first run */ }
+    try {
+      for (const [k, v] of Object.entries(JSON.parse(fs.readFileSync(this.orderFile, 'utf8')))) this.slots.set(k, v);
+    } catch { /* first run */ }
+    for (const s of this.sessions.values()) {
+      if (s.created === undefined) s.created = s.order;
+      const key = slotKey(s.cwd);
+      if (!key) continue;
+      s.slotKey = key;
+      const slot = this.slots.get(key);
+      if (!slot) this.slots.set(key, { order: s.order, endedAt: null });
+      else { slot.endedAt = null; s.order = slot.order; }
+    }
   }
 
   _save() {
     clearTimeout(this._saveT);
     this._saveT = setTimeout(() => {
-      try { fs.writeFileSync(this.file, JSON.stringify(this.list(), null, 1)); } catch { /* ignore */ }
+      try {
+        fs.writeFileSync(this.file, JSON.stringify(this.list(), null, 1));
+        fs.writeFileSync(this.orderFile, JSON.stringify(Object.fromEntries(this.slots), null, 1));
+      } catch { /* ignore */ }
     }, 500);
+  }
+
+  _liveInSlot(key, exceptId) {
+    for (const s of this.sessions.values()) if (s.slotKey === key && s.id !== exceptId) return true;
+    return false;
+  }
+
+  _assignSlot(s, at, isStart) {
+    const key = slotKey(s.cwd);
+    if (!key || s.slotKey === key) return;
+    s.slotKey = key;
+    const slot = this.slots.get(key);
+    if (slot && (this._liveInSlot(key, s.id) || !slot.endedAt || at - slot.endedAt < SLOT_KEEP)) {
+      slot.endedAt = null;
+      s.order = slot.order;
+      return;
+    }
+    // New slot: use the time the session was opened (if the widget started later, the transcript's first timestamp)
+    let order = at;
+    const ft = s._tx && s._tx.firstTs;
+    if (!isStart && !s.sawStart && ft && ft < at && Date.now() - ft < 24 * 60 * MIN) order = ft;
+    this.slots.set(key, { order, endedAt: null });
+    s.order = order;
+  }
+
+  _releaseSlot(s, at) {
+    if (!s.slotKey || this._liveInSlot(s.slotKey, s.id)) return;
+    const slot = this.slots.get(s.slotKey);
+    if (slot) slot.endedAt = at;
+  }
+
+  _deleteSession(s, at = Date.now()) {
+    this._releaseSlot(s, at);
+    this.sessions.delete(s.id);
   }
 
   _changed() { this._save(); this.emit('change'); }
 
   list() {
     return [...this.sessions.values()]
-      .sort((a, b) => a.order - b.order)
+      .sort((a, b) => a.order - b.order || (a.created || 0) - (b.created || 0))
       .map(({ _tx, ...s }) => s);
   }
 
   get(id) { return this.sessions.get(id); }
-  remove(id) { if (this.sessions.delete(id)) this._changed(); }
+  remove(id) {
+    const s = this.sessions.get(id);
+    if (s) { this._deleteSession(s); this._changed(); }
+  }
   toggleNotify(id) {
     const s = this.sessions.get(id);
     if (s) { s.notify = !s.notify; this._changed(); }
@@ -144,7 +203,7 @@ class Store extends EventEmitter {
     let s = this.sessions.get(id);
 
     if (event === 'SessionEnd') {
-      if (s) { this.sessions.delete(id); this._changed(); }
+      if (s) { this._deleteSession(s, at); this._changed(); }
       return;
     }
     const known = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Notification', 'Stop'];
@@ -156,7 +215,7 @@ class Store extends EventEmitter {
         runStartedAt: null, lastDurationMs: null,
         sessionStartedAt: null, sessionSegStart: null, sessionAccumMs: 0, sawStart: false,
         tokens: { input: 0, output: 0, cacheCreation: 0, cacheRead: 0 },
-        notify: false, order: at, updatedAt: at,
+        notify: false, order: at, created: at, updatedAt: at,
       };
       this.sessions.set(id, s);
     }
@@ -164,6 +223,7 @@ class Store extends EventEmitter {
     if (p.transcript_path) s.transcriptPath = p.transcript_path;
     s.updatedAt = at;
     this._refresh(s);
+    this._assignSlot(s, at, event === 'SessionStart');
 
     switch (event) {
       case 'SessionStart':
@@ -243,9 +303,13 @@ class Store extends EventEmitter {
         this._setStatus(s, 'idle', false, s.updatedAt);
         ch = true;
       } else if (s.status === 'idle' && now - s.updatedAt > DROP_IDLE) {
-        this.sessions.delete(s.id);
+        this._deleteSession(s, now);
         ch = true;
       }
+    }
+    // Clean up slots of folders whose sessions ended long ago
+    for (const [k, v] of this.slots) {
+      if (v.endedAt && now - v.endedAt > SLOT_KEEP && !this._liveInSlot(k)) { this.slots.delete(k); ch = true; }
     }
     if (ch) this._changed();
   }
