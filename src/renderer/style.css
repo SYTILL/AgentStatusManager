@@ -1,0 +1,80 @@
+:root{
+  --panel:#ffffff; --topbg:#fafbfc; --line:#eceef1; --hover:#f5f6f8; --btnhover:#eceef2;
+  --text:#1b1d22; --sub:#6a6f7a; --dim:#a3a7b0; --shine:#ffffff;
+  --working:#f0a020; --ready:#1fb860; --attention:#ec3f3f; --idle:#c3c6cd; --accent:#2d6cdf;
+  --rail:200px; --open:420px; --row:24px;
+  --railw:201px; --openw:421px; /* window widths (incl. 1px border) */
+  --ease:cubic-bezier(.2,.8,.2,1); --dur:.22s;
+}
+:root[data-theme="dark"]{
+  --panel:#1c1e23; --topbg:#17181c; --line:#2a2d33; --hover:#24272d; --btnhover:#2e3138;
+  --text:#e8e9ec; --sub:#9096a0; --dim:#5f646d; --shine:#fff4d0;
+  --working:#f5b83d; --ready:#3ecf74; --attention:#ff5d5d; --idle:#4b4f57; --accent:#6aa5ff;
+}
+*{box-sizing:border-box;margin:0}
+html,body{background:transparent;overflow:hidden}
+body{font-family:"Segoe UI Variable Text","Segoe UI","Malgun Gothic",sans-serif;color:var(--text);user-select:none;cursor:default}
+
+/* expand/collapse: the window grows first, then the dock width animates.
+   On a right dock the dock sits against the right edge and widens to the left (drawer) */
+.dock{width:var(--railw);background:var(--panel);border:1px solid var(--line);overflow:hidden;transition:width var(--dur) var(--ease)}
+.dock.wide{width:var(--openw)}
+.dock.right{margin-left:auto;border-right:0;border-radius:10px 0 0 10px}
+.dock.left{border-left:0;border-radius:0 10px 10px 0}
+.inner{width:var(--open)}
+
+/* top bar: drag only (hovering it doesn't expand) */
+.top{display:flex;align-items:center;gap:7px;height:20px;padding:0 4px 0 10px;
+  border-bottom:1px solid var(--line);background:var(--topbg);cursor:grab}
+body.dragging,body.dragging *{cursor:grabbing !important}
+.grip{color:var(--dim);font-size:11px;letter-spacing:-2px;line-height:1}
+.title{font-size:10.5px;font-weight:700;letter-spacing:.02em;margin-right:auto;white-space:nowrap}
+.ibtn{flex:none;width:20px;height:18px;padding:0;border:0;border-radius:5px;background:none;color:var(--sub);cursor:pointer;display:grid;place-items:center}
+.ibtn:hover{background:var(--btnhover);color:var(--text)}
+.pinned #pin{color:var(--accent)}
+.pinned #pin .pin-body{fill:currentColor}
+#theme .sun{display:none}
+[data-theme="dark"] #theme .sun{display:block}
+[data-theme="dark"] #theme .moon{display:none}
+
+.list{padding:2px 0}
+.item{display:grid;grid-template-columns:var(--rail) 1fr 36px;align-items:center;position:relative}
+.item:hover{background:var(--hover)}
+.item+.item::before{content:"";position:absolute;left:12px;right:0;top:0;border-top:1px solid var(--line)}
+.empty{height:var(--row);display:flex;align-items:center;padding:0 12px;font-size:11px;color:var(--dim)}
+
+.rail{display:flex;align-items:center;gap:8px;padding:0 10px 0 8px;height:var(--row);min-width:0;align-self:start;transition:height var(--dur) var(--ease)}
+.wide .rail{height:50px}
+.bar{flex:none;width:3px;height:14px;border-radius:3px;background:var(--c)}
+.working .bar{background:linear-gradient(180deg,var(--c) 0 40%,color-mix(in srgb,var(--c) 30%,var(--shine)) 50%,var(--c) 60% 100%);background-size:100% 300%;animation:flow 1.4s linear infinite}
+@keyframes flow{from{background-position:0 100%}to{background-position:0 -200%}}
+.attention .bar{animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:.25}}
+.attention{background:color-mix(in srgb,var(--attention) 7%,transparent)}
+.nm{min-width:0;flex:1;display:flex;align-items:center;gap:8px}
+.name{font-size:12px;font-weight:600;white-space:nowrap;display:flex;align-items:center;gap:4px;min-width:0;flex:1}
+.name span{overflow:hidden;text-overflow:ellipsis}
+.name svg{flex:none;color:var(--accent);display:none}
+.item.n .name svg{display:block}
+.timer{flex:none;font-family:"Cascadia Code",Consolas,monospace;font-size:10.5px;color:var(--sub);font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:3px}
+.working .timer,.attention .timer{color:var(--c);font-weight:600}
+.ready .timer::before{content:"✓";color:var(--ready);font-weight:700}
+.idle .name{color:var(--sub)}
+.idle .timer{color:var(--dim)}
+
+.info{min-width:0;opacity:0;max-height:var(--row);overflow:hidden;transition:opacity .12s,max-height var(--dur) var(--ease);padding-right:2px}
+.wide .info{opacity:1;max-height:60px;transition:opacity .18s .08s,max-height var(--dur) var(--ease)}
+.st{font-size:10.5px;font-weight:700;color:var(--c)}
+.idle .st{color:var(--dim)}
+.sum{font-size:11.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.meta{display:flex;gap:10px;margin-top:3px;font-size:10.5px;color:var(--dim);white-space:nowrap}
+.meta b{font-weight:600;color:var(--sub);font-family:"Cascadia Code",Consolas,monospace;font-size:10.5px}
+.bell{width:26px;height:var(--row);padding:0;border:0;border-radius:7px;background:none;color:var(--dim);cursor:pointer;display:grid;place-items:center;opacity:0;overflow:hidden;transition:opacity .12s,height var(--dur) var(--ease)}
+.wide .bell{opacity:1;height:26px;transition:opacity .18s .08s,height var(--dur) var(--ease)}
+.bell:hover{background:var(--btnhover)}
+.item.n .bell{color:var(--accent)}
+.bell .on-ic{display:none}
+.item.n .bell .on-ic{display:block}
+.item.n .bell .off-ic{display:none}
+
+.working{--c:var(--working)} .ready{--c:var(--ready)} .attention{--c:var(--attention)} .idle{--c:var(--idle)}

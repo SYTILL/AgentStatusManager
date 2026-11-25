@@ -1,0 +1,66 @@
+{
+  "name": "agent-status-manager",
+  "productName": "Agent Status",
+  "version": "1.0.0",
+  "description": "Always-on-top widget showing the status of every Claude Code session",
+  "author": "J Yoon",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SYTILL/AgentStatusManager.git"
+  },
+  "main": "src/main/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "install-hooks": "node scripts/install-hooks.js",
+    "uninstall-hooks": "node scripts/install-hooks.js --uninstall",
+    "icon": "node scripts/make-icon.js",
+    "dist": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.agentstatus.manager",
+    "productName": "Agent Status",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "hooks/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Agent Status",
+      "artifactName": "AgentStatus-Setup-${version}.exe"
+    },
+    "portable": {
+      "artifactName": "AgentStatus-Portable-${version}.exe"
+    }
+  },
+  "devDependencies": {
+    "electron": "^45.5.0",
+    "electron-builder": "^26.18.0"
+  }
+}
