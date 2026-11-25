@@ -10,6 +10,7 @@ function newState() {
     offset: 0, partial: '', decoder: new StringDecoder('utf8'),
     usage: {},          // message.id -> usage (one API message can span several lines; keep the last)
     firstTs: null,      // first timestamp in the file
+    firstCwd: null,     // folder the session started in (hook cwd changes when the agent cd's elsewhere)
     lastText: '',       // most recent assistant text block
     interruptedAt: 0,   // time of the latest "[Request interrupted by user" marker
     mtime: 0,
@@ -22,6 +23,7 @@ function parseLine(tx, line) {
   try { o = JSON.parse(line); } catch { return; }
   const ts = o.timestamp ? Date.parse(o.timestamp) : NaN;
   if (!tx.firstTs && !isNaN(ts)) tx.firstTs = ts;
+  if (!tx.firstCwd && typeof o.cwd === 'string' && o.cwd) tx.firstCwd = o.cwd;
 
   const m = o.message;
   if (!m) return;

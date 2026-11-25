@@ -92,6 +92,8 @@ class Store extends EventEmitter {
       if (!slot) this.slots.set(key, { order: s.order, endedAt: null });
       else { slot.endedAt = null; s.order = slot.order; }
     }
+    // Fix sessions stored with a wrong project (cwd changed later) using the start folder in the transcript
+    for (const s of this.sessions.values()) this._refresh(s);
   }
 
   _save() {
@@ -160,8 +162,23 @@ class Store extends EventEmitter {
     if (!s.transcriptPath) return false;
     if (!s._tx) s._tx = tx.newState();
     const changed = tx.readNew(s._tx, s.transcriptPath);
-    if (changed) s.tokens = tx.totals(s._tx);
+    if (changed) {
+      s.tokens = tx.totals(s._tx);
+      if (s._tx.firstCwd) this._setRoot(s, s._tx.firstCwd, s.updatedAt);
+    }
     return changed;
+  }
+
+  // Project = the folder the session started in. If it changes, move to that folder's slot
+  _setRoot(s, cwd, at) {
+    if (s.cwd === cwd) return;
+    s.cwd = cwd;
+    s.project = path.basename(cwd) || cwd;
+    if (s.slotKey && s.slotKey !== slotKey(cwd)) {
+      this._releaseSlot(s, at);
+      s.slotKey = null;
+      this._assignSlot(s, at, false);
+    }
   }
 
   // Session timer: counts only non-idle time.
@@ -219,7 +236,9 @@ class Store extends EventEmitter {
       };
       this.sessions.set(id, s);
     }
-    if (p.cwd) { s.cwd = p.cwd; s.project = path.basename(p.cwd) || p.cwd; }
+    // The hook cwd is the *current* folder (it changes when the agent cd's), so only the first value is used;
+    // once the transcript is readable, the start folder recorded there takes precedence
+    if (p.cwd && !s.cwd) this._setRoot(s, p.cwd, at);
     if (p.transcript_path) s.transcriptPath = p.transcript_path;
     s.updatedAt = at;
     this._refresh(s);
