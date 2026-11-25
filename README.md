@@ -18,12 +18,9 @@ A tiny always-on-top widget for Windows that shows the status of every running *
 
 ### Option A — installer
 
-```bash
-npm install
-npm run dist
-```
+Download **`AgentStatus-Setup-<version>.exe`** from [Releases](https://github.com/SYTILL/AgentStatusManager/releases/latest) and run it. On first launch the app registers its Claude Code hooks automatically.
 
-Run `dist/AgentStatus-Setup-<version>.exe`. On first launch the app registers its Claude Code hooks automatically.
+To build it yourself: `npm install && npm run dist` → `dist/AgentStatus-Setup-<version>.exe`.
 
 - Prefer the installer over the portable build: Windows toast notifications need a Start Menu shortcut with an AppUserModelId.
 - The build is unsigned, so SmartScreen may warn on first run ("More info" → "Run anyway").
