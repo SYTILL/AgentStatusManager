@@ -40,8 +40,8 @@ npm start
 ## Usage
 
 - **Hover** the session list → expands. Hovering the top bar does not expand it.
-- **Top bar:** drag to move · 🌙 dark mode · 📌 keep expanded
-- **🔔** per session: notification on *ready* / *needs attention*. Clicking a notification opens the folder in VS Code.
+- **Top bar:** drag to move · ⟳ refresh (drops sessions whose VS Code window is gone) · 🌙 dark mode · 📌 keep expanded
+- **🔔** per session (on by default): notification on *ready* / *needs attention*. Clicking a notification opens the folder in VS Code.
 - **↗ button** (expanded): open the project in VS Code
 - **Right-click** a row: open in VS Code · open folder · toggle notifications · remove from list
 - **Tray icon:** color shows the overall status. Menu: show/hide, Claude Code hooks (install / reinstall / remove), reset position, launch at login, quit.

@@ -32,6 +32,8 @@ body.dragging,body.dragging *{cursor:grabbing !important}
 .ibtn{flex:none;width:20px;height:18px;padding:0;border:0;border-radius:5px;background:none;color:var(--sub);cursor:pointer;display:grid;place-items:center}
 .ibtn:hover{background:var(--btnhover);color:var(--text)}
 .pinned #pin{color:var(--accent)}
+#refresh.spin svg{animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 .pinned #pin .pin-body{fill:currentColor}
 #theme .sun{display:none}
 [data-theme="dark"] #theme .sun{display:block}

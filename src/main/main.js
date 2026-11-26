@@ -6,7 +6,7 @@ const { spawn } = require('child_process');
 const { Store } = require('./store');
 const { startServer } = require('./server');
 const hooksCfg = require('./hooks-config');
-const { focusVSCodeWindow } = require('./focus-window');
+const { focusVSCodeWindow, listVSCodeTitles, titleParts } = require('./focus-window');
 
 const PORT = Number(process.env.AGENT_STATUS_PORT) || 7777;
 // The window always stays at the expanded width; expand/collapse is only a CSS animation inside it.
@@ -233,6 +233,13 @@ function registerIpc() {
     if (nh !== contentH) { contentH = nh; layout(); }
   });
   ipcMain.on('toggle-notify', (_, id) => store.toggleNotify(id));
+  // Refresh: reconcile the list with open VS Code windows
+  ipcMain.handle('refresh', async () => {
+    const titles = await listVSCodeTitles();
+    if (!titles) return { ok: false };
+    const open = new Set(titles.flatMap(titleParts));
+    return { ok: true, removed: store.reconcile(open) };
+  });
   ipcMain.on('open-vscode', (_, id) => { const s = store.get(id); if (s) openInVSCode(s.cwd); });
   ipcMain.on('set-pinned', (_, v) => { settings.pinned = !!v; saveSettings(); });
   ipcMain.on('drag-start', dragStart);

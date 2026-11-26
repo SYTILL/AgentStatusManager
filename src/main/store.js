@@ -148,6 +148,24 @@ class Store extends EventEmitter {
       .map(({ _tx, ...s }) => s);
   }
 
+  // Reconcile with open VS Code windows: remove sessions whose folder has no window
+  // (when VS Code exits without a SessionEnd: crash, force quit, ...).
+  // Working / needs-attention sessions are clearly alive, so they're kept.
+  // openFolders: Set of lowercase folder names from window titles
+  reconcile(openFolders) {
+    let removed = 0;
+    for (const s of [...this.sessions.values()]) {
+      if (s.status === 'working' || s.status === 'attention') continue;
+      if (openFolders.has(String(s.project || '').toLowerCase())) continue;
+      this._deleteSession(s);
+      removed++;
+    }
+    // Re-read transcripts too (tokens, summary)
+    for (const s of this.sessions.values()) this._refresh(s);
+    this._changed();
+    return removed;
+  }
+
   get(id) { return this.sessions.get(id); }
   remove(id) {
     const s = this.sessions.get(id);
@@ -232,7 +250,7 @@ class Store extends EventEmitter {
         runStartedAt: null, lastDurationMs: null,
         sessionStartedAt: null, sessionSegStart: null, sessionAccumMs: 0, sawStart: false,
         tokens: { input: 0, output: 0, cacheCreation: 0, cacheRead: 0 },
-        notify: false, order: at, created: at, updatedAt: at,
+        notify: true, order: at, created: at, updatedAt: at,
       };
       this.sessions.set(id, s);
     }

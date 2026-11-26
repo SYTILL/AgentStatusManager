@@ -144,6 +144,16 @@ document.getElementById('top').addEventListener('mousedown', (e) => {
   addEventListener('mouseup', end);
   addEventListener('blur', end);
 });
+const refreshBtn = document.getElementById('refresh');
+refreshBtn.addEventListener('click', async () => {
+  if (refreshBtn.classList.contains('spin')) return;
+  refreshBtn.classList.add('spin');
+  const started = Date.now();
+  try { await api.refresh(); } finally {
+    // keep the spin visible for at least half a second so the click registers
+    setTimeout(() => refreshBtn.classList.remove('spin'), Math.max(0, 500 - (Date.now() - started)));
+  }
+});
 document.getElementById('theme').addEventListener('click', () => {
   const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
   document.documentElement.dataset.theme = t;

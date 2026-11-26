@@ -1,11 +1,14 @@
-// Finds the VS Code window for a folder and brings it to the front.
-// Windows blocks background processes from taking focus (SetForegroundWindow) and only flashes the
-// taskbar, so the usual workaround is used: tap Alt, then SetForegroundWindow.
+// VS Code window helpers (Windows):
+// - focusVSCodeWindow: find the window for a folder and bring it to the front.
+//   Windows blocks background processes from taking focus (SetForegroundWindow) and only flashes the
+//   taskbar, so the usual workaround is used: tap Alt, then SetForegroundWindow.
+// - listVSCodeTitles: titles of every open VS Code window (used to reconcile the session list).
 // VS Code's default title is "file - <folder> - Visual Studio Code", so match on the " - " segments.
 const { spawn } = require('child_process');
 
-const PS = String.raw`
+const COMMON = String.raw`
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Add-Type @"
 using System; using System.Runtime.InteropServices; using System.Text;
 public class AsmWin {
@@ -21,21 +24,27 @@ public class AsmWin {
 }
 "@
 $pids = @(Get-Process -Name Code -ErrorAction SilentlyContinue | ForEach-Object { [uint32]$_.Id })
-$script:target = [IntPtr]::Zero
-$cb = [AsmWin+EnumProc]{
-  param($h, $l)
-  if (-not [AsmWin]::IsWindowVisible($h)) { return $true }
-  $sb = New-Object System.Text.StringBuilder 512
-  [void][AsmWin]::GetWindowText($h, $sb, 512)
-  $p = [uint32]0
-  [void][AsmWin]::GetWindowThreadProcessId($h, [ref]$p)
-  if ($pids -contains $p) {
-    $parts = $sb.ToString() -split ' - ' | ForEach-Object { $_.Trim().TrimStart([char]0x25CF).Trim() }
-    if ($parts -contains $name) { $script:target = $h; return $false }
+# Calls $onWindow (handle, title) for each visible VS Code window; stops when it returns $false
+function Each-CodeWindow($onWindow) {
+  $cb = [AsmWin+EnumProc]{
+    param($h, $l)
+    if (-not [AsmWin]::IsWindowVisible($h)) { return $true }
+    $p = [uint32]0
+    [void][AsmWin]::GetWindowThreadProcessId($h, [ref]$p)
+    if ($pids -notcontains $p) { return $true }
+    $sb = New-Object System.Text.StringBuilder 512
+    [void][AsmWin]::GetWindowText($h, $sb, 512)
+    if ($sb.Length -eq 0) { return $true }
+    return (& $onWindow $h $sb.ToString())
   }
-  return $true
+  [void][AsmWin]::EnumWindows($cb, [IntPtr]::Zero)
 }
-[void][AsmWin]::EnumWindows($cb, [IntPtr]::Zero)
+function Title-Parts($t) { $t -split ' - ' | ForEach-Object { $_.Trim().TrimStart([char]0x25CF).Trim() } }
+`;
+
+const FOCUS = String.raw`
+$script:target = [IntPtr]::Zero
+Each-CodeWindow { param($h, $t) if ((Title-Parts $t) -contains $name) { $script:target = $h; return $false }; return $true }
 if ($script:target -eq [IntPtr]::Zero) { exit 3 }
 if ($dry) { exit 0 }
 if ([AsmWin]::IsIconic($script:target)) { [void][AsmWin]::ShowWindow($script:target, 9) }
@@ -45,22 +54,45 @@ if ([AsmWin]::IsIconic($script:target)) { [void][AsmWin]::ShowWindow($script:tar
 exit 0
 `;
 
-// Resolves to: 'focused' | 'not-found' | 'error' (with dry, 'found' instead of 'focused')
-function focusVSCodeWindow(folderName, { dry = false } = {}) {
-  const head = `$name = '${String(folderName).replace(/'/g, "''")}'\n$dry = $${dry ? 'true' : 'false'}\n`;
-  const encoded = Buffer.from(head + PS, 'utf16le').toString('base64');
+const LIST = String.raw`
+$script:titles = New-Object System.Collections.ArrayList
+Each-CodeWindow { param($h, $t) [void]$script:titles.Add($t); return $true }
+$script:titles | ForEach-Object { [Console]::Out.WriteLine($_) }
+exit 0
+`;
+
+function runPS(script, timeoutMs = 8000) {
+  const encoded = Buffer.from(COMMON + script, 'utf16le').toString('base64');
   return new Promise((resolve) => {
-    let p;
+    let p, out = '';
     try {
-      p = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand', encoded], { windowsHide: true, stdio: 'ignore' });
-    } catch { resolve('error'); return; }
-    const t = setTimeout(() => { try { p.kill(); } catch { /* ignore */ } resolve('error'); }, 8000);
-    p.on('error', () => { clearTimeout(t); resolve('error'); });
-    p.on('exit', (code) => {
-      clearTimeout(t);
-      resolve(code === 0 ? (dry ? 'found' : 'focused') : code === 3 ? 'not-found' : 'error');
-    });
+      p = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand', encoded],
+        { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+    } catch { resolve({ code: -1, out }); return; }
+    p.stdout.setEncoding('utf8');
+    p.stdout.on('data', (c) => (out += c));
+    const t = setTimeout(() => { try { p.kill(); } catch { /* ignore */ } resolve({ code: -1, out }); }, timeoutMs);
+    p.on('error', () => { clearTimeout(t); resolve({ code: -1, out }); });
+    p.on('exit', (code) => { clearTimeout(t); resolve({ code, out }); });
   });
 }
 
-module.exports = { focusVSCodeWindow };
+const psStr = (s) => `'${String(s).replace(/'/g, "''")}'`;
+
+// Resolves to: 'focused' | 'not-found' | 'error' (with dry, 'found' instead of 'focused')
+async function focusVSCodeWindow(folderName, { dry = false } = {}) {
+  const { code } = await runPS(`$name = ${psStr(folderName)}\n$dry = $${dry ? 'true' : 'false'}\n${FOCUS}`);
+  return code === 0 ? (dry ? 'found' : 'focused') : code === 3 ? 'not-found' : 'error';
+}
+
+// Resolves to the open VS Code window titles, or null if they couldn't be read
+async function listVSCodeTitles() {
+  const { code, out } = await runPS(LIST);
+  if (code !== 0) return null;
+  return out.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+}
+
+// Folder names appearing in a title (the " - " segments)
+const titleParts = (t) => t.split(' - ').map((s) => s.replace(/^[\s●]+/, '').trim().toLowerCase());
+
+module.exports = { focusVSCodeWindow, listVSCodeTitles, titleParts };

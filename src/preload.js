@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('api', {
   setTheme: (t) => ipcRenderer.send('set-theme', t),
   rowMenu: (id) => ipcRenderer.send('row-menu', id),
   openInVSCode: (id) => ipcRenderer.send('open-vscode', id),
+  refresh: () => ipcRenderer.invoke('refresh'),
   dragStart: () => ipcRenderer.send('drag-start'),
   dragEnd: () => ipcRenderer.send('drag-end'),
 });
