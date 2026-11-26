@@ -6,6 +6,7 @@ const { spawn } = require('child_process');
 const { Store } = require('./store');
 const { startServer } = require('./server');
 const hooksCfg = require('./hooks-config');
+const { focusVSCodeWindow } = require('./focus-window');
 
 const PORT = Number(process.env.AGENT_STATUS_PORT) || 7777;
 // The window always stays at the expanded width; expand/collapse is only a CSS animation inside it.
@@ -192,11 +193,17 @@ function autoSetupHooks() {
 }
 
 // ---------- helpers ----------
-function openInVSCode(cwd) {
+// If a VS Code window for the folder is already open, bring it to the front ourselves.
+// (`code <folder>` only selects the existing window; Windows' focus-stealing protection leaves it flashing in the taskbar.)
+// If it isn't open, open it with `code` and bring the new window up once it appears.
+async function openInVSCode(cwd) {
   if (!cwd) return;
+  const name = path.basename(cwd);
+  if ((await focusVSCodeWindow(name)) === 'focused') return;
   const p = spawn(`code "${cwd.replace(/"/g, '')}"`, { shell: true, detached: true, stdio: 'ignore', windowsHide: true });
   p.on('error', () => shell.openPath(cwd));
   p.unref();
+  setTimeout(() => focusVSCodeWindow(name), 2500);
 }
 
 let pushT = null;
