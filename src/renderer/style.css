@@ -21,6 +21,8 @@ body{font-family:"Segoe UI Variable Text","Segoe UI","Malgun Gothic",sans-serif;
 .dock.wide{width:var(--openw)}
 .dock.right{margin-left:auto;border-right:0;border-radius:10px 0 0 10px}
 .dock.left{border-left:0;border-radius:0 10px 10px 0}
+/* not snapped to the edge: free-floating, rounded on all sides */
+.dock.free{border:1px solid var(--line);border-radius:10px}
 .inner{width:var(--open)}
 
 /* top bar: drag only (hovering it doesn't expand) */
@@ -31,13 +33,12 @@ body.dragging,body.dragging *{cursor:grabbing !important}
 .title{font-size:10.5px;font-weight:700;letter-spacing:.02em;margin-right:auto;white-space:nowrap}
 .ibtn{flex:none;width:20px;height:18px;padding:0;border:0;border-radius:5px;background:none;color:var(--sub);cursor:pointer;display:grid;place-items:center}
 .ibtn:hover{background:var(--btnhover);color:var(--text)}
-.pinned #pin{color:var(--accent)}
-#refresh.spin svg{animation:spin .8s linear infinite}
+.top .tools-slot{display:contents}
+.act-refresh.spin svg{animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-.pinned #pin .pin-body{fill:currentColor}
-#theme .sun{display:none}
-[data-theme="dark"] #theme .sun{display:block}
-[data-theme="dark"] #theme .moon{display:none}
+.act-theme .sun{display:none}
+[data-theme="dark"] .act-theme .sun{display:block}
+[data-theme="dark"] .act-theme .moon{display:none}
 
 .list{padding:2px 0}
 .item{display:grid;grid-template-columns:var(--rail) 1fr 36px;align-items:center;position:relative}
@@ -53,7 +54,7 @@ body.dragging,body.dragging *{cursor:grabbing !important}
 @keyframes flow{from{background-position:0 100%}to{background-position:0 -200%}}
 .attention .bar{animation:blink 1s steps(2) infinite}
 @keyframes blink{50%{opacity:.25}}
-.attention{background:color-mix(in srgb,var(--attention) 7%,transparent)}
+.item.attention,.seg.attention{background:color-mix(in srgb,var(--attention) 7%,transparent)}
 .nm{min-width:0;flex:1;display:flex;align-items:center;gap:8px}
 .name{font-size:12px;font-weight:600;white-space:nowrap;display:flex;align-items:center;gap:4px;min-width:0;flex:1}
 .name span{overflow:hidden;text-overflow:ellipsis}
@@ -75,10 +76,59 @@ body.dragging,body.dragging *{cursor:grabbing !important}
 .bell{width:26px;height:var(--row);padding:0;border:0;border-radius:7px;background:none;color:var(--dim);cursor:pointer;display:grid;place-items:center;opacity:0;overflow:hidden;transition:opacity .12s,height var(--dur) var(--ease)}
 .wide .bell{opacity:1;height:26px;transition:opacity .18s .08s,height var(--dur) var(--ease)}
 .bell:hover{background:var(--btnhover);color:var(--text)}
-.item.n .bell{color:var(--accent)}
+.n .bell{color:var(--accent)}
 .bell .on-ic{display:none}
-.item.n .bell .on-ic{display:block}
-.item.n .bell .off-ic{display:none}
+.n .bell .on-ic{display:block}
+.n .bell .off-ic{display:none}
+
+/* ---- horizontal layout: top bar split into equal segments ---- */
+body[data-layout="horizontal"] .dock{display:none}
+body[data-layout="vertical"] .hwrap{display:none}
+.hwrap{position:absolute;top:0;left:50%;transform:translateX(-50%)}
+.hbar{position:relative;display:flex;align-items:center;height:26px;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+.hwrap.snap .hbar{border-top:0;border-radius:0 0 10px 10px}
+.hgrip{flex:none;display:flex;align-items:center;gap:7px;height:100%;padding:0 9px 0 10px;border-right:1px solid var(--line);cursor:grab}
+.hgrip .title{margin-right:0}
+.segs{display:flex;flex:1;min-width:0;height:100%}
+.seg{position:relative;flex:1;min-width:0;display:flex;align-items:center;gap:5px;padding:0 9px;border-right:1px solid var(--line)}
+.seg.link{cursor:pointer}
+.seg:hover{background:var(--hover)}
+.snm{font-size:11.5px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.idle .snm{color:var(--sub)}
+.seg .mini{flex:none;color:var(--accent);display:none}
+.seg.n .mini{display:block}
+/* status stripe along the bottom of each segment */
+.sbar{position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--c)}
+.working .sbar{background:linear-gradient(90deg,var(--c) 0 40%,color-mix(in srgb,var(--c) 30%,var(--shine)) 50%,var(--c) 60% 100%);background-size:300% 100%;animation:hflow 1.4s linear infinite}
+@keyframes hflow{from{background-position:100% 0}to{background-position:-200% 0}}
+.attention .sbar{animation:blink 1s steps(2) infinite}
+.htools{flex:none;display:flex;gap:2px;align-items:center;height:100%;padding:0 4px}
+.hempty{display:flex;align-items:center;padding:0 12px;font-size:11px;color:var(--dim)}
+
+/* details card: hover popover under a segment, or one per segment when "Always expanded" */
+.card{position:relative;padding:7px 10px 7px;background:var(--panel);border:1px solid var(--line);border-top:3px solid var(--c);border-radius:9px;box-shadow:0 10px 30px rgba(20,30,50,.16);text-align:left}
+.cst{font-size:10px;font-weight:700;color:var(--c)}
+.idle .cst{color:var(--dim)}
+.cn{font-size:12px;font-weight:700;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cs{font-size:11px;color:var(--sub);margin-top:2px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.cm{display:flex;align-items:center;gap:10px;margin-top:4px;font-size:10px;color:var(--dim);white-space:nowrap}
+.cm b{font-weight:600;color:var(--sub);font-family:"Cascadia Code",Consolas,monospace}
+.card .bell{flex:none;margin-left:auto;opacity:1;width:22px;height:20px}
+.cmv{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.lbl2{display:none}
+/* narrow cards under the segments: values only ("3h 27m  9.8M tok") */
+.hcard .cm{gap:7px}
+.hcard .lbl{display:none}
+.hcard .lbl2{display:inline}
+/* the transparent padding keeps the hover alive while moving from the segment to the popover */
+.pop{display:none;position:absolute;top:100%;left:50%;transform:translateX(-50%);width:230px;padding-top:6px;z-index:5;cursor:default}
+.seg:hover .pop{display:block}
+.hwrap.expanded .pop{display:none !important}
+.hcards{display:none;position:absolute;top:32px;left:0;right:0;gap:6px}
+.hwrap.expanded .hcards{display:flex}
+.hcard{flex:1;min-width:0}
+.hcard.link{cursor:pointer}
+.hcard:hover{border-color:color-mix(in srgb,var(--c) 45%,var(--line))}
 
 /* ---- alert bubbles ---- */
 /* The layer hugs the dock's inner edge and follows the expand/collapse animation */
@@ -101,6 +151,11 @@ body[data-side="left"] .bubble::after{left:-5px;border-right:0;border-top:0}
 .bubble:hover::after{border-color:color-mix(in srgb,var(--c) 55%,var(--line))}
 body[data-side="right"] .bubble.enter,body[data-side="right"] .bubble.leave{opacity:0;transform:translateX(10px)}
 body[data-side="left"] .bubble.enter,body[data-side="left"] .bubble.leave{opacity:0;transform:translateX(-10px)}
+/* horizontal: bubbles hang under their segment (position set inline), tail pointing up */
+body[data-side="top"] .bubbles{left:0;top:0;width:100%}
+body[data-side="top"] .bubble{transition:top var(--dur) var(--ease),left var(--dur) var(--ease),opacity .18s,transform .18s}
+body[data-side="top"] .bubble::after{top:-5px;left:18px;border-right:0;border-bottom:0}
+body[data-side="top"] .bubble.enter,body[data-side="top"] .bubble.leave{opacity:0;transform:translateY(-8px)}
 .bh{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;white-space:nowrap;min-width:0}
 .bd{flex:none;width:7px;height:7px;border-radius:50%;background:var(--c)}
 .bubble.attention .bd{animation:blink 1s steps(2) infinite}

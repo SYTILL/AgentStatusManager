@@ -5,7 +5,7 @@ A tiny always-on-top widget for Windows that shows the status of every running *
 - One flat line per session: status color · project name · run timer
 - Hover to expand: status, summary of what it's doing, active session time, token usage
 - Speech-bubble alerts beside the widget (with sound) when a session is **ready** or **needs attention**; click one to jump to that VS Code window
-- Light / dark mode, drag anywhere (snaps to the left or right screen edge), pin to keep expanded
+- Vertical (side dock) or horizontal (top bar) layout, light / dark mode, drag anywhere (optionally snapping to the screen edge)
 
 | Color | Status | Meaning |
 |---|---|---|
@@ -39,11 +39,12 @@ npm start
 ## Usage
 
 - **Hover** the session list → expands. Hovering the top bar does not expand it.
-- **Top bar:** drag to move · ⟳ refresh (drops sessions whose VS Code window is gone) · 🌙 dark mode · 📌 keep expanded
+- **Top bar:** drag to move · ⟳ refresh (drops sessions whose VS Code window is gone) · 🌙 dark mode · ⚙ settings (same menu as the tray)
 - **🔔** per session (on by default): alerts on *ready* / *needs attention*.
 - **Click** a row: open that session's VS Code window (🔔 only toggles notifications)
-- **Right-click** a row: open in VS Code · open folder · toggle notifications · remove from list
-- **Tray icon:** color shows the overall status. Menu: show/hide, Claude Code hooks (install / reinstall / remove), sound, reset position, launch at login, quit.
+- **Right-click** a row: open in VS Code · open folder · show last alert again · toggle notifications · remove from list
+- **Tray icon:** color shows the overall status. Menu (also under ⚙): show/hide, layout (vertical / horizontal), snap to screen edge, always expanded, Claude Code hooks, sound, reset position, launch at login, quit.
+- **Horizontal layout:** a bar at the top of the screen split into one segment per session (colored stripe = status). Hover a segment for its details; with *Always expanded*, a card shows under every segment. Alert bubbles appear under the segment.
 
 Alerts:
 

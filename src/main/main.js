@@ -14,8 +14,12 @@ const PORT = Number(process.env.AGENT_STATUS_PORT) || 7777;
 //   height = from the widget's top down to the bottom of the screen
 // Everything except the dock and the bubbles is transparent and click-through.
 const OPEN = 421;
+const RAIL_W = 201;
 const BUBBLE_AREA = 270;
 const WIN_W = OPEN + BUBBLE_AREA;
+// Horizontal layout: a bar at the top; the window leaves room below it for popovers, cards and bubbles
+const H_WIN_W = 1100;
+const H_WIN_H = 320;
 
 // Let the renderer play alert sounds without a user gesture
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -26,12 +30,17 @@ if (!app.requestSingleInstanceLock()) { app.quit(); }
 app.setAppUserModelId(app.isPackaged ? 'com.agentstatus.manager' : process.execPath);
 
 let win, tray, store, settings;
-let contentH = 60;
+let contentH = 60;   // vertical: expanded dock height
+let barW = 600;      // horizontal: bar width
 
 // ---------- settings ----------
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 const SOUND_DEFAULTS = { enabled: true, volume: 0.6, readyFile: null, attentionFile: null };
-const DEFAULTS = { side: 'right', y: null, pinned: false, theme: 'light' };
+// layout: 'vertical' (side dock) | 'horizontal' (top bar)
+// snap: stick to the screen edge (left/right for vertical, top for horizontal); off = stays where dropped
+// pinned: "Always expanded"
+// vertical position: side, y, vx (window x when not snapped) · horizontal position: hx (bar center x), hy (y when not snapped)
+const DEFAULTS = { layout: 'vertical', snap: true, side: 'right', y: null, vx: null, hx: null, hy: null, pinned: false, theme: 'light' };
 function loadSettings() {
   let s;
   try { s = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) }; }
@@ -52,12 +61,25 @@ function workArea() {
 function layout() {
   if (!win || win.isDestroyed() || dragTimer) return;
   const wa = workArea();
-  const w = WIN_W;
-  const dockH = Math.max(24, Math.min(contentH, wa.height));
-  let y = settings.y == null ? wa.y + Math.round(wa.height * 0.25) : settings.y;
-  y = Math.max(wa.y, Math.min(wa.y + wa.height - dockH, y));
-  const h = wa.y + wa.height - y; // down to the bottom of the screen (room for bubbles)
-  const x = settings.side === 'left' ? wa.x : wa.x + wa.width - w;
+  let x, y, w, h;
+  if (settings.layout === 'horizontal') {
+    // The bar is centered in the window; the window may hang off-screen by its transparent margin
+    w = H_WIN_W;
+    h = Math.min(H_WIN_H, wa.height);
+    const cx = settings.hx == null ? wa.x + wa.width / 2 : settings.hx;
+    const slack = Math.max(0, Math.floor((w - barW) / 2));
+    x = Math.round(cx - w / 2);
+    x = Math.max(wa.x - slack, Math.min(wa.x + wa.width - w + slack, x));
+    y = settings.snap || settings.hy == null ? wa.y : Math.max(wa.y, Math.min(wa.y + wa.height - 40, settings.hy));
+  } else {
+    w = WIN_W;
+    const dockH = Math.max(24, Math.min(contentH, wa.height));
+    y = settings.y == null ? wa.y + Math.round(wa.height * 0.25) : settings.y;
+    y = Math.max(wa.y, Math.min(wa.y + wa.height - dockH, y));
+    h = wa.y + wa.height - y; // down to the bottom of the screen (room for bubbles)
+    if (settings.snap || settings.vx == null) x = settings.side === 'left' ? wa.x : wa.x + wa.width - w;
+    else x = Math.max(wa.x, Math.min(wa.x + wa.width - w, settings.vx));
+  }
   const b = win.getBounds();
   if (b.x === x && b.y === y && b.width === w && b.height === h) return;
   win.setBounds({ x, y, width: w, height: h });
@@ -83,13 +105,33 @@ function dragEnd() {
   snap();
 }
 
+// After a drag: remember where it was dropped. layout() then sticks it to the edge if snap is on.
 function snap() {
   const b = win.getBounds();
   const wa = screen.getDisplayMatching(b).workArea;
-  settings.side = b.x + b.width / 2 < wa.x + wa.width / 2 ? 'left' : 'right';
-  settings.y = b.y;
+  if (settings.layout === 'horizontal') {
+    settings.hx = Math.round(b.x + b.width / 2);
+    settings.hy = b.y;
+  } else {
+    // Side follows which half of the screen the dock is in; keep the dock where it was dropped
+    const dockLeft = settings.side === 'left' ? b.x : b.x + b.width - RAIL_W;
+    settings.side = dockLeft + RAIL_W / 2 < wa.x + wa.width / 2 ? 'left' : 'right';
+    settings.y = b.y;
+    settings.vx = settings.side === 'left' ? dockLeft : dockLeft + RAIL_W - WIN_W;
+  }
   saveSettings();
-  win.webContents.send('side', settings.side);
+  sendSettings();
+  layout();
+}
+
+const viewSettings = () => ({ layout: settings.layout, side: settings.side, snap: settings.snap, pinned: settings.pinned, theme: settings.theme });
+function sendSettings() {
+  if (win && !win.isDestroyed()) win.webContents.send('settings', viewSettings());
+}
+function setOption(key, value) {
+  settings[key] = value;
+  saveSettings();
+  sendSettings();
   layout();
 }
 
@@ -146,6 +188,17 @@ function buildTrayMenu() {
   const hs = hooksStatus();
   return Menu.buildFromTemplate([
     { label: 'Show / hide widget', click: toggleWindow },
+    { type: 'separator' },
+    {
+      label: 'Layout',
+      submenu: [
+        { label: 'Vertical (side)', type: 'radio', checked: settings.layout !== 'horizontal', click: () => setOption('layout', 'vertical') },
+        { label: 'Horizontal (top)', type: 'radio', checked: settings.layout === 'horizontal', click: () => setOption('layout', 'horizontal') },
+      ],
+    },
+    { label: 'Snap to screen edge', type: 'checkbox', checked: settings.snap, click: (mi) => setOption('snap', mi.checked) },
+    { label: 'Always expanded', type: 'checkbox', checked: !!settings.pinned, click: (mi) => setOption('pinned', mi.checked) },
+    { type: 'separator' },
     {
       label: `Claude Code hooks (${hs.installed ? (hs.broken ? 'broken path' : 'installed') : 'not installed'})`,
       submenu: [
@@ -155,7 +208,10 @@ function buildTrayMenu() {
       ],
     },
     soundMenu(),
-    { label: 'Reset position', click: () => { settings.side = 'right'; settings.y = null; saveSettings(); win.webContents.send('side', 'right'); layout(); } },
+    {
+      label: 'Reset position',
+      click: () => { Object.assign(settings, { side: 'right', y: null, vx: null, hx: null, hy: null }); saveSettings(); sendSettings(); layout(); },
+    },
     {
       label: 'Launch at login', type: 'checkbox',
       checked: app.getLoginItemSettings(loginOpts()).openAtLogin,
@@ -236,10 +292,23 @@ function push() {
 }
 
 // ---------- alerts: speech bubble beside the widget + sound (instead of Windows notifications) ----------
+// Last alert per session, so a dismissed bubble can be shown again from the row's right-click menu
+const lastAlerts = new Map();
 function notify(s) {
   if (!win || win.isDestroyed()) return;
   const text = s.status === 'attention' ? s.detail || 'Needs your attention' : s.summary || 'Finished';
-  win.webContents.send('alert', { id: s.id, status: s.status, project: s.project, cwd: s.cwd, text, sound: soundPayload(s.status) });
+  const alert = { id: s.id, status: s.status, project: s.project, cwd: s.cwd, text };
+  lastAlerts.set(s.id, alert);
+  win.webContents.send('alert', { ...alert, sound: soundPayload(s.status) });
+}
+// Only while the session is still in the state the alert was about (otherwise the bubble would be stale)
+function canReshow(s) {
+  const a = s && lastAlerts.get(s.id);
+  return !!a && a.status === s.status;
+}
+function reshowAlert(s) {
+  if (!canReshow(s) || !win || win.isDestroyed()) return;
+  win.webContents.send('alert', { ...lastAlerts.get(s.id), sound: { enabled: false } });
 }
 
 // Sound: the renderer plays it. Built-in tones are synthesized there; custom files are sent as data URLs
@@ -307,11 +376,15 @@ function soundMenu() {
 
 // ---------- IPC ----------
 function registerIpc() {
-  ipcMain.handle('init', () => ({ sessions: store.list(), settings }));
+  ipcMain.handle('init', () => ({ sessions: store.list(), settings: viewSettings() }));
   ipcMain.on('set-ignore', (_, v) => { if (win) win.setIgnoreMouseEvents(!!v, { forward: true }); });
-  ipcMain.on('content-height', (_, h) => {
-    const nh = Math.ceil(h);
-    if (nh !== contentH) { contentH = nh; layout(); }
+  ipcMain.on('content-size', (_, size) => {
+    const nh = Math.ceil((size && size.h) || contentH), nw = Math.ceil((size && size.w) || barW);
+    if (nh !== contentH || nw !== barW) { contentH = nh; barW = nw; layout(); }
+  });
+  // Top bar right-click → same menu as the tray
+  ipcMain.on('settings-menu', () => {
+    buildTrayMenu().popup({ window: win, callback: () => win.webContents.send('menu-closed') });
   });
   ipcMain.on('toggle-notify', (_, id) => store.toggleNotify(id));
   // Refresh: reconcile the list with open VS Code windows
@@ -335,6 +408,7 @@ function registerIpc() {
       { label: 'Open in VS Code', enabled: !!s.cwd, click: () => openInVSCode(s.cwd) },
       { label: 'Open folder', enabled: !!s.cwd, click: () => shell.openPath(s.cwd) },
       { type: 'separator' },
+      { label: 'Show last alert', enabled: canReshow(s), click: () => reshowAlert(s) },
       { label: s.notify ? 'Turn off notifications' : 'Turn on notifications', click: () => store.toggleNotify(id) },
       { label: 'Remove from list', click: () => store.remove(id) },
     ]).popup({ window: win, callback: () => win.webContents.send('menu-closed') });
