@@ -1,5 +1,5 @@
-// Electron main process: window, tray, notifications
-const { app, BrowserWindow, ipcMain, screen, Tray, Menu, Notification, nativeImage, shell } = require('electron');
+// Electron main process: window, tray, alerts (speech bubbles + sound)
+const { app, BrowserWindow, ipcMain, screen, Tray, Menu, Notification, nativeImage, shell, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -9,10 +9,16 @@ const hooksCfg = require('./hooks-config');
 const { focusVSCodeWindow, listVSCodeTitles, titleParts } = require('./focus-window');
 
 const PORT = Number(process.env.AGENT_STATUS_PORT) || 7777;
-// The window always stays at the expanded width; expand/collapse is only a CSS animation inside it.
-// (Resizing a transparent window causes flicker on Windows.) Transparent areas are click-through.
+// The window size never changes with expand/collapse or bubbles (resizing a transparent window flickers on Windows):
+//   width  = expanded dock (OPEN) + room for the alert bubbles on the screen-center side
+//   height = from the widget's top down to the bottom of the screen
+// Everything except the dock and the bubbles is transparent and click-through.
 const OPEN = 421;
-const LABEL = { working: 'Working', ready: 'Ready', attention: 'Needs attention', idle: 'Idle' };
+const BUBBLE_AREA = 270;
+const WIN_W = OPEN + BUBBLE_AREA;
+
+// Let the renderer play alert sounds without a user gesture
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 // Use the same data folder in dev and exe (otherwise productName would change it)
 app.setPath('userData', path.join(app.getPath('appData'), 'agent-status-manager'));
@@ -24,10 +30,14 @@ let contentH = 60;
 
 // ---------- settings ----------
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
+const SOUND_DEFAULTS = { enabled: true, volume: 0.6, readyFile: null, attentionFile: null };
 const DEFAULTS = { side: 'right', y: null, pinned: false, theme: 'light' };
 function loadSettings() {
-  try { return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) }; }
-  catch { return { ...DEFAULTS }; }
+  let s;
+  try { s = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) }; }
+  catch { s = { ...DEFAULTS }; }
+  s.sound = { ...SOUND_DEFAULTS, ...(s.sound || {}) };
+  return s;
 }
 function saveSettings() {
   try { fs.writeFileSync(settingsFile(), JSON.stringify(settings, null, 2)); } catch { /* ignore */ }
@@ -42,10 +52,11 @@ function workArea() {
 function layout() {
   if (!win || win.isDestroyed() || dragTimer) return;
   const wa = workArea();
-  const w = OPEN;
-  const h = Math.max(24, Math.min(contentH, wa.height));
+  const w = WIN_W;
+  const dockH = Math.max(24, Math.min(contentH, wa.height));
   let y = settings.y == null ? wa.y + Math.round(wa.height * 0.25) : settings.y;
-  y = Math.max(wa.y, Math.min(wa.y + wa.height - h, y));
+  y = Math.max(wa.y, Math.min(wa.y + wa.height - dockH, y));
+  const h = wa.y + wa.height - y; // down to the bottom of the screen (room for bubbles)
   const x = settings.side === 'left' ? wa.x : wa.x + wa.width - w;
   const b = win.getBounds();
   if (b.x === x && b.y === y && b.width === w && b.height === h) return;
@@ -84,11 +95,12 @@ function snap() {
 
 function createWindow() {
   win = new BrowserWindow({
-    width: OPEN, height: 120, show: false,
+    width: WIN_W, height: 120, show: false,
     frame: false, transparent: true, backgroundColor: '#00000000', hasShadow: false,
     resizable: false, maximizable: false, minimizable: false, fullscreenable: false,
     skipTaskbar: true, alwaysOnTop: true,
-    webPreferences: { preload: path.join(__dirname, '..', 'preload.js') },
+    // keep timers and alert sounds running while the widget is hidden
+    webPreferences: { preload: path.join(__dirname, '..', 'preload.js'), backgroundThrottling: false },
   });
   win.setAlwaysOnTop(true, 'floating');
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
@@ -142,6 +154,7 @@ function buildTrayMenu() {
         { label: 'Open settings file', click: () => shell.openPath(hooksCfg.SETTINGS) },
       ],
     },
+    soundMenu(),
     { label: 'Reset position', click: () => { settings.side = 'right'; settings.y = null; saveSettings(); win.webContents.send('side', 'right'); layout(); } },
     {
       label: 'Launch at login', type: 'checkbox',
@@ -216,12 +229,74 @@ function push() {
   }, 60);
 }
 
+// ---------- alerts: speech bubble beside the widget + sound (instead of Windows notifications) ----------
 function notify(s) {
-  if (!Notification.isSupported()) return;
-  const body = s.status === 'attention' ? s.detail || 'Needs your attention' : s.summary || 'Finished';
-  const n = new Notification({ title: `${s.project} · ${LABEL[s.status]}`, body });
-  n.on('click', () => openInVSCode(s.cwd));
-  n.show();
+  if (!win || win.isDestroyed()) return;
+  const text = s.status === 'attention' ? s.detail || 'Needs your attention' : s.summary || 'Finished';
+  win.webContents.send('alert', { id: s.id, status: s.status, project: s.project, cwd: s.cwd, text, sound: soundPayload(s.status) });
+}
+
+// Sound: the renderer plays it. Built-in tones are synthesized there; custom files are sent as data URLs
+const AUDIO_MIME = { '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.flac': 'audio/flac' };
+const audioCache = new Map();
+function audioDataUrl(file) {
+  if (audioCache.has(file)) return audioCache.get(file);
+  try {
+    const buf = fs.readFileSync(file);
+    if (buf.length > 10 * 1024 * 1024) return null;
+    const url = `data:${AUDIO_MIME[path.extname(file).toLowerCase()] || 'audio/mpeg'};base64,${buf.toString('base64')}`;
+    audioCache.set(file, url);
+    return url;
+  } catch { return null; }
+}
+function soundPayload(kind) {
+  const s = settings.sound;
+  const file = kind === 'attention' ? s.attentionFile : s.readyFile;
+  return { enabled: s.enabled, volume: s.volume, src: file ? audioDataUrl(file) : null };
+}
+function testSound(kind) {
+  if (win && !win.isDestroyed()) win.webContents.send('play-sound', { kind, sound: { ...soundPayload(kind), enabled: true } });
+}
+async function chooseSound(key, kind) {
+  const r = await dialog.showOpenDialog({
+    title: kind === 'attention' ? 'Needs-attention sound' : 'Ready sound',
+    properties: ['openFile'],
+    filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'] }],
+  });
+  if (r.canceled || !r.filePaths[0]) return;
+  settings.sound[key] = r.filePaths[0];
+  audioCache.delete(r.filePaths[0]);
+  saveSettings();
+  testSound(kind);
+}
+function soundMenu() {
+  const s = settings.sound;
+  const fileItem = (key, kind, label) => ({
+    label,
+    submenu: [
+      { label: 'Built-in', type: 'radio', checked: !s[key], click: () => { s[key] = null; saveSettings(); testSound(kind); } },
+      { label: s[key] ? `Custom: ${path.basename(s[key])}  (change…)` : 'Custom file…', type: 'radio', checked: !!s[key], click: () => chooseSound(key, kind) },
+    ],
+  });
+  return {
+    label: 'Sound',
+    submenu: [
+      { label: 'Play sounds', type: 'checkbox', checked: s.enabled, click: (mi) => { s.enabled = mi.checked; saveSettings(); } },
+      {
+        label: 'Volume',
+        submenu: [['Low', 0.3], ['Medium', 0.6], ['High', 1]].map(([l, v]) => ({
+          label: l, type: 'radio', checked: Math.abs(s.volume - v) < 0.01,
+          click: () => { s.volume = v; saveSettings(); testSound('ready'); },
+        })),
+      },
+      { type: 'separator' },
+      fileItem('readyFile', 'ready', 'Ready sound'),
+      fileItem('attentionFile', 'attention', 'Needs-attention sound'),
+      { type: 'separator' },
+      { label: 'Test ready sound', click: () => testSound('ready') },
+      { label: 'Test needs-attention sound', click: () => testSound('attention') },
+    ],
+  };
 }
 
 // ---------- IPC ----------
@@ -241,6 +316,8 @@ function registerIpc() {
     return { ok: true, removed: store.reconcile(open) };
   });
   ipcMain.on('open-vscode', (_, id) => { const s = store.get(id); if (s) openInVSCode(s.cwd); });
+  // Bubble click: go to that session's VS Code window (cwd is a fallback if the session already ended)
+  ipcMain.on('bubble-open', (_, id, cwd) => { const s = store.get(id); openInVSCode((s && s.cwd) || cwd); });
   ipcMain.on('set-pinned', (_, v) => { settings.pinned = !!v; saveSettings(); });
   ipcMain.on('drag-start', dragStart);
   ipcMain.on('drag-end', dragEnd);

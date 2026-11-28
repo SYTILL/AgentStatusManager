@@ -81,4 +81,36 @@ body.dragging,body.dragging *{cursor:grabbing !important}
 .item.n .bell .on-ic{display:block}
 .item.n .bell .off-ic{display:none}
 
+/* ---- alert bubbles ---- */
+/* The layer hugs the dock's inner edge and follows the expand/collapse animation */
+.bubbles{position:absolute;top:0;width:250px;height:0;pointer-events:none}
+body[data-side="right"] .bubbles{right:calc(var(--railw) + 10px);transition:right var(--dur) var(--ease)}
+body[data-side="right"] .dock.wide ~ .bubbles{right:calc(var(--openw) + 10px)}
+body[data-side="left"] .bubbles{left:calc(var(--railw) + 10px);transition:left var(--dur) var(--ease)}
+body[data-side="left"] .dock.wide ~ .bubbles{left:calc(var(--openw) + 10px)}
+
+.bubble{position:absolute;top:0;width:max-content;min-width:150px;max-width:250px;padding:7px 24px 8px 10px;
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 20px rgba(20,30,50,.18);
+  cursor:pointer;pointer-events:auto;transition:top var(--dur) var(--ease),opacity .18s,transform .18s}
+body[data-side="right"] .bubble{right:0}
+body[data-side="left"] .bubble{left:0}
+.bubble:hover{border-color:color-mix(in srgb,var(--c) 55%,var(--line))}
+/* tail pointing at the session row */
+.bubble::after{content:"";position:absolute;top:9px;width:8px;height:8px;background:var(--panel);border:1px solid var(--line);transform:rotate(45deg)}
+body[data-side="right"] .bubble::after{right:-5px;border-left:0;border-bottom:0}
+body[data-side="left"] .bubble::after{left:-5px;border-right:0;border-top:0}
+.bubble:hover::after{border-color:color-mix(in srgb,var(--c) 55%,var(--line))}
+body[data-side="right"] .bubble.enter,body[data-side="right"] .bubble.leave{opacity:0;transform:translateX(10px)}
+body[data-side="left"] .bubble.enter,body[data-side="left"] .bubble.leave{opacity:0;transform:translateX(-10px)}
+.bh{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;white-space:nowrap;min-width:0}
+.bd{flex:none;width:7px;height:7px;border-radius:50%;background:var(--c)}
+.bubble.attention .bd{animation:blink 1s steps(2) infinite}
+.pn{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.bs{flex:none;font-size:10px;font-weight:700;color:var(--c)}
+/* summary: two lines max */
+.bt{font-size:11px;color:var(--sub);margin-top:2px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.bx{position:absolute;top:4px;right:4px;width:18px;height:18px;padding:0;border:0;border-radius:5px;background:none;color:var(--dim);display:grid;place-items:center;opacity:0;cursor:pointer}
+.bubble:hover .bx{opacity:1}
+.bx:hover{background:var(--btnhover);color:var(--text)}
+
 .working{--c:var(--working)} .ready{--c:var(--ready)} .attention{--c:var(--attention)} .idle{--c:var(--idle)}

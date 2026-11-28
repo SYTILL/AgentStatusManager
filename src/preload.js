@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('api', {
   rowMenu: (id) => ipcRenderer.send('row-menu', id),
   openInVSCode: (id) => ipcRenderer.send('open-vscode', id),
   refresh: () => ipcRenderer.invoke('refresh'),
+  onAlert: (cb) => ipcRenderer.on('alert', (_, a) => cb(a)),
+  onPlaySound: (cb) => ipcRenderer.on('play-sound', (_, d) => cb(d)),
+  openFromBubble: (id, cwd) => ipcRenderer.send('bubble-open', id, cwd),
   dragStart: () => ipcRenderer.send('drag-start'),
   dragEnd: () => ipcRenderer.send('drag-end'),
 });

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; media-src 'self' data:">
 <title>Agents</title>
 <link rel="stylesheet" href="style.css">
 </head>
@@ -26,6 +26,8 @@
     <div class="list" id="list"></div>
   </div>
 </div>
+<!-- alert bubbles: beside the dock, on the screen-center side -->
+<div class="bubbles" id="bubbles"></div>
 <script src="renderer.js"></script>
 </body>
 </html>

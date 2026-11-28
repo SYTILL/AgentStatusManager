@@ -4,7 +4,7 @@ A tiny always-on-top widget for Windows that shows the status of every running *
 
 - One flat line per session: status color · project name · run timer
 - Hover to expand: status, summary of what it's doing, active session time, token usage
-- Per-session 🔔 toggle for desktop notifications when a session is **ready** or **needs attention**
+- Speech-bubble alerts beside the widget (with sound) when a session is **ready** or **needs attention**; click one to jump to that VS Code window
 - Light / dark mode, drag anywhere (snaps to the left or right screen edge), pin to keep expanded
 
 | Color | Status | Meaning |
@@ -22,7 +22,6 @@ Download **`AgentStatus-Setup-<version>.exe`** from [Releases](https://github.co
 
 To build it yourself: `npm install && npm run dist` → `dist/AgentStatus-Setup-<version>.exe`.
 
-- Prefer the installer over the portable build: Windows toast notifications need a Start Menu shortcut with an AppUserModelId.
 - The build is unsigned, so SmartScreen may warn on first run ("More info" → "Run anyway").
 
 ### Option B — run from source
@@ -41,10 +40,18 @@ npm start
 
 - **Hover** the session list → expands. Hovering the top bar does not expand it.
 - **Top bar:** drag to move · ⟳ refresh (drops sessions whose VS Code window is gone) · 🌙 dark mode · 📌 keep expanded
-- **🔔** per session (on by default): notification on *ready* / *needs attention*. Clicking a notification opens the folder in VS Code.
+- **🔔** per session (on by default): alerts on *ready* / *needs attention*.
 - **↗ button** (expanded): open the project in VS Code
 - **Right-click** a row: open in VS Code · open folder · toggle notifications · remove from list
-- **Tray icon:** color shows the overall status. Menu: show/hide, Claude Code hooks (install / reinstall / remove), reset position, launch at login, quit.
+- **Tray icon:** color shows the overall status. Menu: show/hide, Claude Code hooks (install / reinstall / remove), sound, reset position, launch at login, quit.
+
+Alerts:
+
+- A speech bubble appears beside the session's row (on the screen-center side of the widget): project, status, and a two-line summary.
+- **Click** the bubble → it closes and the session's VS Code window comes to the front. **×** (on hover) closes it without switching.
+- One bubble per session; it closes on its own when the session starts working again, goes idle, or ends.
+- **Sound** (tray → Sound): on/off, volume, built-in tones or your own audio file per status (mp3 / wav / ogg / m4a), and test buttons. Built-in: two soft rising notes for *ready*, three short beeps for *needs attention*.
+- Alerts don't go through Windows notifications, so Focus / Do Not Disturb doesn't silence them; turn the sound off in the tray menu if needed.
 
 Timers:
 

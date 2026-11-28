@@ -75,15 +75,19 @@ setInterval(tick, 1000);
 // The window is always at the expanded size, so only the CSS class is toggled (no flicker)
 let hoverOpen = false, pinned = false, closeT = null, menuOpen = false;
 const wantWide = () => hoverOpen || pinned;
-function syncWide() { dock.classList.toggle('wide', wantWide()); }
+function syncWide() { dock.classList.toggle('wide', wantWide()); layoutBubbles(); }
 
-// Click-through: transparent areas outside the dock pass the mouse to the window behind
-let overDock = false;
-dock.addEventListener('mouseenter', () => { overDock = true; api.setIgnoreMouse(false); });
-dock.addEventListener('mouseleave', () => {
-  overDock = false;
-  if (!document.body.classList.contains('dragging') && !menuOpen) api.setIgnoreMouse(true);
+// Click-through: only the dock and the bubbles take the mouse; transparent areas pass it to the window behind.
+// With forward:true, mousemove still arrives while ignoring, so decide by what's under the cursor.
+let ignoring = true;
+const isDragging = () => document.body.classList.contains('dragging');
+function setIgnore(v) { if (v !== ignoring) { ignoring = v; api.setIgnoreMouse(v); } }
+const overInteractive = () => !!document.querySelector('.dock:hover, .bubble:hover');
+document.addEventListener('mousemove', (e) => {
+  if (isDragging() || menuOpen) return;
+  setIgnore(!e.target.closest('.dock, .bubble'));
 });
+document.addEventListener('mouseleave', () => { if (!isDragging() && !menuOpen) setIgnore(true); });
 
 function setOpen(v) {
   if (hoverOpen === v) return;
@@ -103,7 +107,7 @@ list.addEventListener('mouseleave', () => {
 api.onMenuClosed(() => {
   menuOpen = false;
   if (!list.matches(':hover')) setOpen(false);
-  if (!dock.matches(':hover')) api.setIgnoreMouse(true);
+  setIgnore(!overInteractive());
 });
 
 list.addEventListener('click', (e) => {
@@ -137,7 +141,7 @@ document.getElementById('top').addEventListener('mousedown', (e) => {
   const end = () => {
     document.body.classList.remove('dragging');
     api.dragEnd();
-    if (!dock.matches(':hover')) api.setIgnoreMouse(true);
+    setIgnore(!overInteractive());
     removeEventListener('mouseup', end);
     removeEventListener('blur', end);
   };
@@ -163,7 +167,115 @@ document.getElementById('theme').addEventListener('click', () => {
 function setSide(side) {
   dock.classList.toggle('left', side === 'left');
   dock.classList.toggle('right', side !== 'left');
+  document.body.dataset.side = side === 'left' ? 'left' : 'right';
 }
+
+// ---- alert bubbles ----
+// One bubble per session (the latest alert replaces it). Click → close + go to that VS Code window; × → close only.
+// It closes on its own when the session starts working again, goes idle, ends, or notifications are turned off.
+const bubblesEl = document.getElementById('bubbles');
+const bubbles = new Map(); // id -> { el, cwd }
+const ICON_X = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
+
+function showBubble(a) {
+  let b = bubbles.get(a.id);
+  if (!b) {
+    const el = document.createElement('div');
+    el.dataset.id = a.id;
+    bubblesEl.appendChild(el);
+    b = { el };
+    bubbles.set(a.id, b);
+    el.className = `bubble ${a.status} enter`;
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('enter')));
+  } else {
+    b.el.className = `bubble ${a.status}`;
+  }
+  b.cwd = a.cwd;
+  b.el.title = a.text;
+  b.el.innerHTML = `
+    <div class="bh"><span class="bd"></span><span class="pn">${esc(a.project)}</span><span class="bs">${LABEL[a.status] || ''}</span></div>
+    <div class="bt">${esc(a.text)}</div>
+    <button class="bx" title="Dismiss">${ICON_X}</button>`;
+  layoutBubbles();
+}
+
+function closeBubble(id) {
+  const b = bubbles.get(id);
+  if (!b) return;
+  bubbles.delete(id);
+  b.el.classList.add('leave');
+  setTimeout(() => { b.el.remove(); layoutBubbles(); if (!overInteractive()) setIgnore(true); }, 180);
+}
+
+// Line each bubble up with its session row (tail pointing at the row); push down to avoid overlaps
+function layoutBubbles() {
+  if (!bubbles.size) return;
+  const wide = dock.classList.contains('wide');
+  const rowH = wide ? ROW_WIDE : ROW;
+  const listTop = 1 + document.getElementById('top').offsetHeight + 2;
+  const ids = sessions.map((s) => s.id);
+  const entries = [...bubbles.entries()].sort((a, b) => {
+    const ia = ids.indexOf(a[0]), ib = ids.indexOf(b[0]);
+    return (ia < 0 ? 1e9 : ia) - (ib < 0 ? 1e9 : ib);
+  });
+  let bottom = 0;
+  for (const [id, b] of entries) {
+    const i = ids.indexOf(id);
+    const rowCenter = listTop + (i < 0 ? ids.length : i) * rowH + rowH / 2;
+    const top = Math.max(rowCenter - 13, bottom);
+    b.el.style.top = `${top}px`;
+    bottom = top + b.el.offsetHeight + 6;
+  }
+}
+
+bubblesEl.addEventListener('click', (e) => {
+  const el = e.target.closest('.bubble');
+  if (!el) return;
+  const id = el.dataset.id;
+  const cwd = bubbles.get(id)?.cwd;
+  closeBubble(id);
+  if (!e.target.closest('.bx')) api.openFromBubble(id, cwd);
+});
+
+function pruneBubbles() {
+  for (const id of [...bubbles.keys()]) {
+    const s = sessions.find((x) => x.id === id);
+    if (!s || !s.notify || s.status === 'working' || s.status === 'idle') closeBubble(id);
+  }
+}
+
+// ---- sound ----
+// Built-in: synthesized tones (Ready = two soft rising notes, Needs attention = three short beeps). Custom: audio file.
+let actx = null;
+function synth(kind, vol) {
+  actx = actx || new AudioContext();
+  const t0 = actx.currentTime + 0.02;
+  const att = kind === 'attention';
+  const notes = att ? [[880, 0], [880, 0.15], [1175, 0.3]] : [[659, 0], [988, 0.14]];
+  for (const [f, dt] of notes) {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = att ? 'triangle' : 'sine';
+    o.frequency.value = f;
+    const len = att ? 0.13 : 0.5;
+    g.gain.setValueAtTime(0.0001, t0 + dt);
+    g.gain.linearRampToValueAtTime(0.32 * vol, t0 + dt + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dt + len);
+    o.connect(g).connect(actx.destination);
+    o.start(t0 + dt);
+    o.stop(t0 + dt + len + 0.05);
+  }
+}
+function playSound(kind, snd) {
+  if (!snd || !snd.enabled) return;
+  if (snd.src) {
+    const a = new Audio(snd.src);
+    a.volume = Math.max(0, Math.min(1, snd.volume));
+    a.play().catch(() => synth(kind, snd.volume));
+  } else synth(kind, snd.volume);
+}
+
+api.onAlert((a) => { showBubble(a); playSound(a.status, a.sound); });
+api.onPlaySound(({ kind, sound }) => playSound(kind, sound));
 
 // Window height = dock height when expanded (rows 50px). Fixed regardless of expand/collapse,
 // so the window only resizes when the number of sessions changes
@@ -175,8 +287,8 @@ function reportHeight() {
 }
 new MutationObserver(reportHeight).observe(list, { childList: true });
 
-api.onSessions((d) => { sessions = d; render(); });
-api.onSide(setSide);
+api.onSessions((d) => { sessions = d; render(); pruneBubbles(); layoutBubbles(); });
+api.onSide((side) => { setSide(side); layoutBubbles(); });
 api.init().then(({ sessions: s, settings }) => {
   document.documentElement.dataset.theme = settings.theme;
   pinned = !!settings.pinned;
