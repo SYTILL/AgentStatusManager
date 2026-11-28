@@ -41,7 +41,7 @@ npm start
 - **Hover** the session list → expands. Hovering the top bar does not expand it.
 - **Top bar:** drag to move · ⟳ refresh (drops sessions whose VS Code window is gone) · 🌙 dark mode · 📌 keep expanded
 - **🔔** per session (on by default): alerts on *ready* / *needs attention*.
-- **↗ button** (expanded): open the project in VS Code
+- **Click** a row: open that session's VS Code window (🔔 only toggles notifications)
 - **Right-click** a row: open in VS Code · open folder · toggle notifications · remove from list
 - **Tray icon:** color shows the overall status. Menu: show/hide, Claude Code hooks (install / reinstall / remove), sound, reset position, launch at login, quit.
 
