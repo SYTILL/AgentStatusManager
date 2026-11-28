@@ -1,7 +1,7 @@
 {
   "name": "agent-status-manager",
   "productName": "Agent Status",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Always-on-top widget showing the status of every Claude Code session",
   "author": "J Yoon",
   "license": "MIT",
