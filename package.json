@@ -1,7 +1,7 @@
 {
   "name": "agent-status-manager",
   "productName": "Agent Status",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Always-on-top widget showing the status of every Claude Code session",
   "author": "J Yoon",
   "license": "MIT",
@@ -62,5 +62,8 @@
   "devDependencies": {
     "electron": "^45.5.0",
     "electron-builder": "^26.18.0"
+  },
+  "dependencies": {
+    "koffi": "^3.3.8"
   }
 }

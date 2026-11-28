@@ -79,14 +79,31 @@ function runPS(script, timeoutMs = 8000) {
 
 const psStr = (s) => `'${String(s).replace(/'/g, "''")}'`;
 
+// Fast path: direct Win32 calls via koffi (a few ms). The PowerShell scripts above are only a fallback
+// if the native module can't be loaded (spawning PowerShell can take several seconds).
+let native = null;
+try { native = require('./win32'); } catch (e) { console.error('win32 native unavailable, using PowerShell', e && e.message); }
+
 // Resolves to: 'focused' | 'not-found' | 'error' (with dry, 'found' instead of 'focused')
 async function focusVSCodeWindow(folderName, { dry = false } = {}) {
+  if (native) {
+    try {
+      const w = native.findCodeWindow(folderName);
+      if (!w) return 'not-found';
+      if (dry) return 'found';
+      native.bringToFront(w.hwnd);
+      return 'focused';
+    } catch { /* fall through to PowerShell */ }
+  }
   const { code } = await runPS(`$name = ${psStr(folderName)}\n$dry = $${dry ? 'true' : 'false'}\n${FOCUS}`);
   return code === 0 ? (dry ? 'found' : 'focused') : code === 3 ? 'not-found' : 'error';
 }
 
 // Resolves to the open VS Code window titles, or null if they couldn't be read
 async function listVSCodeTitles() {
+  if (native) {
+    try { return native.codeWindows().map((w) => w.title); } catch { /* fall through */ }
+  }
   const { code, out } = await runPS(LIST);
   if (code !== 0) return null;
   return out.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);

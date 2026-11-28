@@ -216,7 +216,13 @@ async function openInVSCode(cwd) {
   const p = spawn(`code "${cwd.replace(/"/g, '')}"`, { shell: true, detached: true, stdio: 'ignore', windowsHide: true });
   p.on('error', () => shell.openPath(cwd));
   p.unref();
-  setTimeout(() => focusVSCodeWindow(name), 2500);
+  // Bring the new window up as soon as it appears (check every 400 ms, up to 15 s)
+  const until = Date.now() + 15000;
+  const poll = async () => {
+    if ((await focusVSCodeWindow(name)) === 'focused' || Date.now() > until) return;
+    setTimeout(poll, 400);
+  };
+  setTimeout(poll, 400);
 }
 
 let pushT = null;
