@@ -17,7 +17,7 @@ body{font-family:"Segoe UI Variable Text","Segoe UI","Malgun Gothic",sans-serif;
 
 /* expand/collapse: the window grows first, then the dock width animates.
    On a right dock the dock sits against the right edge and widens to the left (drawer) */
-.dock{width:var(--railw);background:var(--panel);border:1px solid var(--line);overflow:hidden;transition:width var(--dur) var(--ease)}
+.dock{position:relative;z-index:20;width:var(--railw);background:var(--panel);border:1px solid var(--line);overflow:hidden;transition:width var(--dur) var(--ease)}
 .dock.wide{width:var(--openw)}
 .dock.right{margin-left:auto;border-right:0;border-radius:10px 0 0 10px}
 .dock.left{border-left:0;border-radius:0 10px 10px 0}
@@ -84,7 +84,8 @@ body.dragging,body.dragging *{cursor:grabbing !important}
 /* ---- horizontal layout: top bar split into equal segments ---- */
 body[data-layout="horizontal"] .dock{display:none}
 body[data-layout="vertical"] .hwrap{display:none}
-.hwrap{position:absolute;top:0;left:50%;transform:translateX(-50%)}
+/* above the bubble layer, so a segment's hover popover covers any bubble beneath it */
+.hwrap{position:absolute;top:0;left:50%;transform:translateX(-50%);z-index:20}
 .hbar{position:relative;display:flex;align-items:center;height:26px;background:var(--panel);border:1px solid var(--line);border-radius:10px}
 .hwrap.snap .hbar{border-top:0;border-radius:0 0 10px 10px}
 .hgrip{flex:none;display:flex;align-items:center;gap:7px;height:100%;padding:0 9px 0 10px;border-right:1px solid var(--line);cursor:grab}
@@ -132,7 +133,7 @@ body[data-layout="vertical"] .hwrap{display:none}
 
 /* ---- alert bubbles ---- */
 /* The layer hugs the dock's inner edge and follows the expand/collapse animation */
-.bubbles{position:absolute;top:0;width:250px;height:0;pointer-events:none}
+.bubbles{position:absolute;top:0;width:250px;height:0;pointer-events:none;z-index:10}
 body[data-side="right"] .bubbles{right:calc(var(--railw) + 10px);transition:right var(--dur) var(--ease)}
 body[data-side="right"] .dock.wide ~ .bubbles{right:calc(var(--openw) + 10px)}
 body[data-side="left"] .bubbles{left:calc(var(--railw) + 10px);transition:left var(--dur) var(--ease)}
